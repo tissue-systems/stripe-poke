@@ -1,0 +1,34 @@
+[package]
+name = "stripe-poke"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+authors = ["Tissue Systems, Inc. <oss@tissue.systems>"]
+license = "MIT OR Apache-2.0"
+description = "Treat Stripe webhooks as pokes: verify, re-fetch from Stripe, and deliver the derived state through a durable outbox"
+repository = "https://github.com/tissue-systems/stripe-poke"
+documentation = "https://docs.rs/stripe-poke"
+readme = "README.md"
+keywords = ["stripe", "webhook", "billing", "outbox", "idempotency"]
+categories = ["web-programming", "database"]
+# Private until we open-source it. Remove this line in the same commit that
+# makes the repository public, not before.
+publish = false
+
+[features]
+default = ["sqlite"]
+# SqliteLedger and SqliteOutbox. Without it you bring your own store by
+# implementing the Ledger and Outbox traits.
+sqlite = ["dep:rusqlite"]
+
+[dependencies]
+hex = "0.4"
+hmac = "0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+rusqlite = { version = "0.40", optional = true }
+
+[dev-dependencies]
+rusqlite = { version = "0.40", features = ["bundled"] }
+tokio = { version = "1", features = ["macros", "rt"] }
