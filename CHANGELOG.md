@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (unreleased)
 
 rusqlite 0.41, which needs Rust 1.89, so `rust-version` goes from 1.88 to 1.89.
 rusqlite's types are in the public API of the `sqlite` module, so this goes
