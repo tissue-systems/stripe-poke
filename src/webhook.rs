@@ -31,12 +31,14 @@ pub struct Event {
     pub data: EventData,
 }
 
+/// The `data` member of an [`Event`].
 #[derive(Debug, Clone, Deserialize)]
 pub struct EventData {
     pub object: serde_json::Value,
 }
 
 impl Event {
+    /// The raw `data.object` JSON.
     pub fn object(&self) -> &serde_json::Value {
         &self.data.object
     }
@@ -117,7 +119,7 @@ impl<E, LE> Outcome<E, LE> {
 /// The settings [`Receiver::receive`] needs besides the request itself.
 #[derive(Debug, Clone, Copy)]
 pub struct Receiver<'a, L> {
-    /// The endpoint's signing secret (`whsec_…`).
+    /// The endpoint's signing secret, the one starting `whsec_`.
     pub secret: &'a str,
     /// How far `t=` may be from now. Stripe's own libraries use 300 seconds.
     pub tolerance_secs: i64,

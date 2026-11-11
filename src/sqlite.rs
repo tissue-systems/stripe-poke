@@ -113,6 +113,8 @@ struct OutboxSql {
     last_acked: String,
 }
 
+/// An [`Outbox`] in two SQLite tables: the queue and the last acked payload
+/// per key.
 pub struct SqliteOutbox {
     conn: SharedConnection,
     sql: OutboxSql,

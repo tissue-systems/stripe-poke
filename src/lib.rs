@@ -24,6 +24,67 @@
 //! The crate does no HTTP and starts no tasks. You call it from your own
 //! handler, implement [`outbox::Sink`] with your own client, and run
 //! [`outbox::retry_due`] and your sweep on whatever timer you already have.
+//!
+//! # Example
+//!
+//! A webhook endpoint body. `fetch_plan` stands in for your Stripe client and
+//! `Manage` for whatever receives the derived state.
+//!
+//! ```
+//! # #[cfg(feature = "sqlite")]
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! use std::sync::{Arc, Mutex};
+//! use stripe_poke::outbox::{self, Sink};
+//! use stripe_poke::sqlite::{OutboxNames, SqliteLedger, SqliteOutbox};
+//! use stripe_poke::webhook::{Handled, Receiver};
+//!
+//! struct Manage;
+//!
+//! impl Sink for Manage {
+//!     type Error = String;
+//!     async fn deliver(&self, key: &str, payload: &str) -> Result<(), String> {
+//!         println!("{key} -> {payload}");
+//!         Ok(())
+//!     }
+//! }
+//!
+//! async fn fetch_plan(customer: &str) -> Result<String, String> {
+//!     Ok("pro".into())
+//! }
+//!
+//! let conn = Arc::new(Mutex::new(rusqlite::Connection::open_in_memory()?));
+//! let ledger = SqliteLedger::open(conn.clone(), "stripe_events")?;
+//! let queue = SqliteOutbox::open(conn, &OutboxNames::default())?;
+//!
+//! let secret = "whsec_test";
+//! let body = br#"{"id":"evt_1","type":"invoice.paid",
+//!     "data":{"object":{"object":"invoice","customer":"cus_1"}}}"#;
+//! let header = stripe_poke::signature::sign(secret, body, stripe_poke::unix_now());
+//!
+//! let rx = Receiver { secret, tolerance_secs: 300, ledger: &ledger };
+//! let queue = &queue;
+//! let outcome = rx
+//!     .receive(&header, body, stripe_poke::unix_now(), |event| async move {
+//!         let Some(customer) = event.customer_id() else {
+//!             return Ok(Handled::Ignored);
+//!         };
+//!         // Stamp before the fetch, not after it.
+//!         let as_of = stripe_poke::unix_now();
+//!         let plan = fetch_plan(customer).await?;
+//!         let payload = format!(r#"{{"plan":"{plan}","as_of":{as_of}}}"#);
+//!         outbox::enqueue_and_deliver(queue, &Manage, customer, &payload, as_of)
+//!             .await
+//!             .map_err(|e| e.to_string())?;
+//!         Ok::<_, String>(Handled::Processed)
+//!     })
+//!     .await;
+//! assert_eq!(outcome.status(), 200);
+//! # Ok(())
+//! # }
+//! # #[cfg(feature = "sqlite")]
+//! # tokio::runtime::Builder::new_current_thread().build()?.block_on(example())?;
+//! # Ok::<_, Box<dyn std::error::Error>>(())
+//! ```
 
 pub mod drift;
 pub mod outbox;

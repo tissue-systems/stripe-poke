@@ -3,20 +3,20 @@
 //!
 //! Each payload is the whole state for its key, not a change to apply, so
 //! only the newest one matters. Enqueueing a key that is already queued
-//! replaces its payload and resets its attempts. Three rules keep it from
-//! losing anything:
+//! replaces its payload and resets its attempts.
 //!
-//! - **Enqueue before the first attempt.** A crash between the two leaves a
-//!   queued row, not a lost update. [`enqueue_and_deliver`] does it in that
-//!   order and returns an error if the enqueue fails, so your webhook can
-//!   answer 500 instead of claiming the work is stored.
-//! - **Ack only an unchanged payload.** If a newer state is enqueued while an
-//!   older one is in flight, the older one's success must not delete the
-//!   newer row. [`Outbox::ack`] removes the row only when the payload still
-//!   matches.
-//! - **Remember what was acked.** [`Outbox::last_acked`] gives a sweep
-//!   something to compare a re-derived payload with, so it re-sends only on
-//!   real drift (see [`crate::drift`]).
+//! The payload is enqueued before the first attempt, so a crash between the
+//! two leaves a queued row rather than a lost update. [`enqueue_and_deliver`]
+//! does it in that order and returns an error if the enqueue fails, so your
+//! webhook can answer 500 instead of claiming the work is stored.
+//!
+//! [`Outbox::ack`] removes a row only if it still holds the payload that was
+//! delivered. If a newer state was enqueued while an older one was in
+//! flight, the older one's success leaves the newer row alone.
+//!
+//! [`Outbox::last_acked`] keeps the last payload the other side accepted, so
+//! a sweep can compare a re-derived payload with it and re-send only when
+//! something changed (see [`crate::drift`]).
 //!
 //! The receiving side should still guard against stale writes, for example
 //! by keeping the highest timestamp it has seen per key. Retries and sweeps
@@ -30,7 +30,7 @@ pub const BACKOFF_BASE_SECS: i64 = 30;
 pub const BACKOFF_CAP_SECS: i64 = 900;
 
 /// Delay before the next attempt for a row that has failed `attempts` times
-/// so far: 30 s, 60 s, 120 s, … up to 15 minutes.
+/// so far: 30 s, then 60 s, 120 s and so on, up to 15 minutes.
 pub fn backoff_secs(attempts: i64) -> i64 {
     let doublings = attempts.clamp(0, 5) as u32;
     (BACKOFF_BASE_SECS << doublings).min(BACKOFF_CAP_SECS)
@@ -68,6 +68,7 @@ pub trait Outbox {
 /// receiver has durably taken it.
 pub trait Sink {
     type Error;
+    /// Send `payload` for `key`.
     fn deliver(
         &self,
         key: &str,
@@ -80,11 +81,16 @@ pub trait Sink {
 /// the worst it causes is one extra delivery of the same payload.
 #[derive(Debug)]
 pub enum Delivery<SE, OE> {
+    /// The sink took it. `ack_error` is set if removing the row failed, in
+    /// which case the payload is sent again on the next retry.
     Delivered { ack_error: Option<OE> },
+    /// The sink refused it. `defer_error` is set if counting the attempt
+    /// failed, in which case the row is retried without backing off.
     Failed { error: SE, defer_error: Option<OE> },
 }
 
 impl<SE, OE> Delivery<SE, OE> {
+    /// True for [`Delivery::Delivered`].
     pub fn is_delivered(&self) -> bool {
         matches!(self, Delivery::Delivered { .. })
     }
@@ -134,8 +140,8 @@ where
 }
 
 /// One pass over the rows due at `now`, in no particular order. Returns each
-/// row with how its attempt went. Run it on a timer;
-/// 30 seconds matches the first backoff step.
+/// row with how its attempt went. Run it on a timer. Every 30 seconds
+/// matches the first backoff step.
 pub async fn retry_due<O, S>(
     outbox: &O,
     sink: &S,

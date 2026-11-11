@@ -9,10 +9,14 @@ use sha2::Sha256;
 
 type HmacSha256 = Hmac<Sha256>;
 
-#[derive(Debug, PartialEq)]
+/// Why a `Stripe-Signature` header was rejected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VerifyError {
+    /// No `t=` timestamp, or no `v1=` entry that decodes as hex.
     MalformedHeader,
+    /// The timestamp is further from `now` than the tolerance allows.
     StaleTimestamp,
+    /// No `v1=` entry matches the body signed with this secret.
     BadSignature,
 }
 
@@ -28,7 +32,10 @@ impl std::fmt::Display for VerifyError {
 
 impl std::error::Error for VerifyError {}
 
-/// Verify a Stripe webhook signature. `now` is passed in for testability.
+/// Check a `Stripe-Signature` header against the raw request body.
+///
+/// `now` is the current Unix time, taken as an argument so tests can pin it.
+/// Stripe's own libraries use a `tolerance_secs` of 300.
 pub fn verify_signature(
     secret: &str,
     header: &str,
@@ -48,7 +55,7 @@ pub fn verify_signature(
                 v1s.push(bytes);
             }
         }
-        // other schemes (v0=...) are ignored
+        // Other schemes (v0= in test mode) are skipped.
     }
 
     let t = t.ok_or(VerifyError::MalformedHeader)?;
@@ -61,33 +68,34 @@ pub fn verify_signature(
         return Err(VerifyError::StaleTimestamp);
     }
 
-    // signed_payload = "{t}.{raw_body}"
-    let mut signed = t.to_string().into_bytes();
-    signed.push(b'.');
-    signed.extend_from_slice(raw_body);
-
-    // Multiple v1 entries are legitimate during secret rotation; accept if ANY
-    // matches. verify_slice is constant-time.
-    for candidate in v1s {
-        let mut mac =
-            HmacSha256::new_from_slice(secret.as_bytes()).expect("hmac accepts any key length");
-        mac.update(&signed);
-        if mac.verify_slice(&candidate).is_ok() {
-            return Ok(());
-        }
+    // While a secret is being rolled, Stripe sends one v1 entry per secret,
+    // so any match will do. verify_slice compares in constant time.
+    let mac = mac(secret, t, raw_body);
+    if v1s
+        .iter()
+        .any(|candidate| mac.clone().verify_slice(candidate).is_ok())
+    {
+        Ok(())
+    } else {
+        Err(VerifyError::BadSignature)
     }
-    Err(VerifyError::BadSignature)
 }
 
-/// Signer counterpart of `verify_signature` — used by unit and integration
-/// tests to construct valid `Stripe-Signature` headers.
+/// Build a valid `Stripe-Signature` header for `raw_body` at time `t`. Meant
+/// for tests: Stripe signs real deliveries itself.
 pub fn sign(secret: &str, raw_body: &[u8], t: i64) -> String {
-    let mut signed = t.to_string().into_bytes();
-    signed.push(b'.');
-    signed.extend_from_slice(raw_body);
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
-    mac.update(&signed);
-    format!("t={t},v1={}", hex::encode(mac.finalize().into_bytes()))
+    let tag = mac(secret, t, raw_body).finalize().into_bytes();
+    format!("t={t},v1={}", hex::encode(tag))
+}
+
+/// HMAC-SHA256 over Stripe's signed payload, `"{t}.{raw_body}"`.
+fn mac(secret: &str, t: i64, raw_body: &[u8]) -> HmacSha256 {
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC takes a key of any length");
+    mac.update(t.to_string().as_bytes());
+    mac.update(b".");
+    mac.update(raw_body);
+    mac
 }
 
 #[cfg(test)]
@@ -163,7 +171,7 @@ mod tests {
     fn accepts_any_valid_v1_during_rotation() {
         let good = sign(SECRET, BODY, 1_700_000_000);
         let sig = good.split("v1=").nth(1).unwrap();
-        // old-secret signature first, current second
+        // A signature from the secret being retired first, the live one second.
         let h = format!("t=1700000000,v1={},v1={}", "ab".repeat(32), sig);
         assert_eq!(
             verify_signature(SECRET, &h, BODY, 1_700_000_000, 300),
