@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+rusqlite 0.41, which needs Rust 1.89, so `rust-version` goes from 1.88 to 1.89.
+
 ## 0.1.1
 
 First release on crates.io. Same behaviour as 0.1.0. The README explains

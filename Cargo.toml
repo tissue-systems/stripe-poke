@@ -2,7 +2,7 @@
 name = "stripe-poke"
 version = "0.1.1"
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.89"
 authors = ["Tissue Systems, Inc. <oss@tissue.systems>"]
 license = "MIT OR Apache-2.0"
 description = "Treat Stripe webhooks as pokes: verify, re-fetch from Stripe, and deliver the derived state through a durable outbox"
