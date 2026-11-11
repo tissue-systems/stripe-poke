@@ -103,7 +103,6 @@ after a newer one, and the queue can't prevent that.
 ## Status
 
 Extracted from atp, the Tissue Cloud billing gateway, which depends on it.
-Not on crates.io yet.
 
 ## License
 
