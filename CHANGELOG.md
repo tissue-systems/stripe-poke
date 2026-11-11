@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+Docs only. `Outcome::Invalid` said Stripe doesn't retry a 4xx. It does:
+Stripe retries any answer that isn't a 2xx.
+
 ## 0.1.1
 
 First release on crates.io. Same behaviour as 0.1.0. The README explains
