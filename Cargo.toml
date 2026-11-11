@@ -11,9 +11,6 @@ documentation = "https://docs.rs/stripe-poke"
 readme = "README.md"
 keywords = ["stripe", "webhook", "billing", "outbox", "idempotency"]
 categories = ["web-programming", "database"]
-# Private until we open-source it. Remove this line in the same commit that
-# makes the repository public, not before.
-publish = false
 
 [features]
 default = ["sqlite"]
