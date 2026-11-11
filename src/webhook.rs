@@ -83,8 +83,9 @@ pub enum Handled {
 /// How [`Receiver::receive`] ended. `E` is your handler's error, `LE` the ledger's.
 #[derive(Debug)]
 pub enum Outcome<E, LE> {
-    /// The signature didn't check out. Answer 400: Stripe treats a 4xx as
-    /// "don't retry", which is right for a forgery.
+    /// The signature didn't check out. Answer 400. Stripe retries any
+    /// non-2xx answer, so a genuine event refused over a wrong or rotated
+    /// secret is delivered again once the secret is right.
     Invalid(VerifyError),
     /// Verified, but not an event envelope.
     Unparseable,
