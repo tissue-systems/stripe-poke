@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+First release on crates.io. Same behaviour as 0.1.0. The README explains
+what a poke is, the crate docs have an example that runs as a test, and
+`VerifyError` derives `Clone`, `Copy` and `Eq`.
+
 ## 0.1.0
 
 First version, extracted from atp, the Tissue Cloud billing gateway.
