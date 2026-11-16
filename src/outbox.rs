@@ -12,7 +12,8 @@
 //!
 //! [`Outbox::ack`] removes a row only if it still holds the payload that was
 //! delivered. If a newer state was enqueued while an older one was in
-//! flight, the older one's success leaves the newer row alone.
+//! flight, the older one's success leaves the newer row alone, and doesn't
+//! become [`Outbox::last_acked`] either.
 //!
 //! [`Outbox::last_acked`] keeps the last payload the other side accepted, so
 //! a sweep can compare a re-derived payload with it and re-send only when
@@ -52,8 +53,11 @@ pub trait Outbox {
     fn enqueue(&self, key: &str, payload: &str, now: i64) -> Result<(), Self::Error>;
     /// Rows whose next attempt is due at `now`.
     fn due(&self, now: i64) -> Result<Vec<Queued>, Self::Error>;
-    /// Delivery of `payload` succeeded: drop the row if it still holds this
-    /// payload, and remember it as the last acked state for `key`.
+    /// Delivery of `payload` succeeded. If the row still holds this payload,
+    /// drop it and remember the payload as the last acked state for `key`.
+    /// If the row is gone or holds a different payload, a newer state was
+    /// enqueued after this one, so neither the row nor the last acked state
+    /// changes.
     fn ack(&self, key: &str, payload: &str, now: i64) -> Result<(), Self::Error>;
     /// Delivery failed: count the attempt and push the next one out by
     /// [`backoff_secs`].
