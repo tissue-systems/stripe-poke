@@ -238,7 +238,21 @@ fn ack_does_not_clobber_a_newer_enqueue() {
     ob.ack("acct_1", "v1", 1002).unwrap();
     assert_eq!(ob.depth().unwrap(), 1);
     assert_eq!(ob.due(2000).unwrap()[0].payload, "v2");
-    assert_eq!(ob.last_acked("acct_1").unwrap().as_deref(), Some("v1"));
+    // v1 was superseded before it landed, so it isn't the state to compare with.
+    assert_eq!(ob.last_acked("acct_1").unwrap(), None);
+}
+
+#[test]
+fn a_late_ack_of_an_older_payload_does_not_rewind_last_acked() {
+    let ob = SqliteOutbox::open(db(), &OutboxNames::default()).unwrap();
+    ob.enqueue("acct_1", "v1", 1000).unwrap();
+    ob.enqueue("acct_1", "v2", 1001).unwrap();
+    // v2 is delivered and acked first...
+    ob.ack("acct_1", "v2", 1002).unwrap();
+    // ...then the retry carrying v1 finishes.
+    ob.ack("acct_1", "v1", 1003).unwrap();
+    assert_eq!(ob.depth().unwrap(), 0);
+    assert_eq!(ob.last_acked("acct_1").unwrap().as_deref(), Some("v2"));
 }
 
 #[test]

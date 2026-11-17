@@ -6,6 +6,11 @@ rusqlite 0.41, which needs Rust 1.89, so `rust-version` goes from 1.88 to 1.89.
 rusqlite's types are in the public API of the `sqlite` module, so this goes
 out as 0.2.0.
 
+`SqliteOutbox::ack` deletes the row and records `last_acked` in one
+transaction, and records it only when the row still held the acked payload.
+An older payload whose delivery finishes after a newer one was enqueued no
+longer becomes `last_acked`, so a late retry can't rewind it.
+
 ## 0.1.2
 
 Docs only, released from the `0.1.x` branch. `Outcome::Invalid` said Stripe

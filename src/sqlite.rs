@@ -17,8 +17,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 pub type SharedConnection = Arc<Mutex<Connection>>;
 
 fn lock(conn: &SharedConnection) -> MutexGuard<'_, Connection> {
-    // Every write here is a single statement, so a panic elsewhere while the
-    // lock was held can't have left one half-applied.
+    // Every write here is a single statement or one transaction, so a panic
+    // elsewhere while the lock was held can't have left one half-applied.
     conn.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -190,10 +190,17 @@ impl Outbox for SqliteOutbox {
     }
 
     fn ack(&self, key: &str, payload: &str, now: i64) -> rusqlite::Result<()> {
-        let conn = lock(&self.conn);
-        conn.execute(&self.sql.ack_delete, params![key, payload])?;
-        conn.execute(&self.sql.ack_record, params![key, payload, now])?;
-        Ok(())
+        let mut conn = lock(&self.conn);
+        // One transaction, so a crash can't drop the row without recording it.
+        let tx = conn.transaction()?;
+        // Only the payload that was still queued becomes last_acked. If the row
+        // is gone or holds another payload, a newer state was enqueued, and
+        // perhaps acked already, so this older one finishing late mustn't
+        // overwrite it.
+        if tx.execute(&self.sql.ack_delete, params![key, payload])? == 1 {
+            tx.execute(&self.sql.ack_record, params![key, payload, now])?;
+        }
+        tx.commit()
     }
 
     fn defer(&self, key: &str, now: i64) -> rusqlite::Result<()> {
