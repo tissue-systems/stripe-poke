@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+rusqlite 0.43. `rust-version` stays at 1.89. rusqlite's types are in the
+public API of the `sqlite` module, and a crate that passes in a `Connection`
+from one rusqlite version can't hand it to a store built against another, so
+this goes out as 0.3.0 rather than 0.2.1. No other changes.
+
 ## 0.2.0
 
 rusqlite 0.42, which needs Rust 1.89, so `rust-version` goes from 1.88 to 1.89.
